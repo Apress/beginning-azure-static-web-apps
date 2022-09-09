@@ -1,0 +1,16 @@
+{
+  "configurations": {
+    "static": {
+      "appLocation": "./dist/wwwroot",
+      "apiLocation": "./Api"
+    },
+    "run-all": {
+      "appDevserverUrl": "https://localhost:5000",
+      "apiLocation": "./Api",
+      "run": "dotnet watch run --project ./Client"
+    },
+    "debug": {
+      "appDevserverUrl": "https://localhost:5000"
+    }
+  }
+}

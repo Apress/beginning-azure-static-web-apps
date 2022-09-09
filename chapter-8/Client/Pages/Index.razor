@@ -1,0 +1,38 @@
+﻿@page "/"
+@inject BlogPostSummaryService service
+@using Models
+
+<PageTitle>Index</PageTitle>
+
+@if (service.Summaries == null)
+{
+    <div>Loading...</div>
+}
+else
+{
+    <div>
+        <h2>Recent Blog Post</h2>
+        @if (Summary == null)
+        {
+            <p class="byline">No blog posts found 😥</p>
+        }
+        else
+        {
+            <div class="home-page">
+                <BlogPostSummary Summary="@Summary" />
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private BlogPost? Summary =>
+        service.Summaries?
+        .OrderByDescending(bps => bps.PublishedDate)
+        .FirstOrDefault();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await service.LoadBlogPostSummaries();
+    }
+}
