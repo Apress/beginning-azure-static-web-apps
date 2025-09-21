@@ -2,88 +2,37 @@
 using System.Net.Http.Json;
 
 namespace Client.Services;
-public class BlogPostSummaryService
+
+public class BlogpostSummaryService : IDisposable
 {
-    private readonly HttpClient http;
-    public List<BlogPost>? Summaries;
+    public event EventHandler? SummariesRefreshed;
+    private readonly HttpClient _httpClient;
+    public List<Blogpost>? Summaries;
+    private BlogpostService _blogpostService;
 
-    public BlogPostSummaryService(HttpClient http)
+    public BlogpostSummaryService(HttpClient httpClient, BlogpostService blogpostService)
     {
-        ArgumentNullException.ThrowIfNull(http, nameof(http));
-        this.http = http;
+        _httpClient = httpClient;
+        _blogpostService = blogpostService;
+        _blogpostService.BlogpostChanged += OnBlogpostsChanged;
     }
 
-    public async Task LoadBlogPostSummaries()
+    public async Task LoadBlogpostSummaries(bool forceLoad = false)
     {
-        if (Summaries == null)
+        if (Summaries == null || forceLoad)
         {
-            Summaries = await http.GetFromJsonAsync<List<BlogPost>>("api/blogposts");
-        }
-    }
-
-    public void Add(BlogPost blogPost)
-    {
-        ArgumentNullException.ThrowIfNull(blogPost, nameof(blogPost));
-
-        if (Summaries is null)
-        {
-            return;
-        }
-
-        if (!Summaries.Any(summary => summary.Id == blogPost.Id && summary.Author == blogPost.Author))
-        {
-            var summary = new BlogPost
-            {
-                Id = blogPost.Id,
-                Author = blogPost.Author,
-                BlogPostMarkdown = blogPost.BlogPostMarkdown,
-                PublishedDate = blogPost.PublishedDate,
-                Tags = blogPost.Tags,
-                Title = blogPost.Title
-            };
-
-            if (summary.BlogPostMarkdown?.Length > 500)
-            {
-                summary.BlogPostMarkdown =
-                summary.BlogPostMarkdown[..500];
-            }
-
-            Summaries.Add(summary);
+            Summaries = await _httpClient.GetFromJsonAsync<List<Blogpost>>("api/blogposts");
+            SummariesRefreshed?.Invoke(this, EventArgs.Empty);
         }
     }
 
-    public void Replace(BlogPost blogPost)
+    public void Dispose()
     {
-        ArgumentNullException.ThrowIfNull(blogPost, nameof(blogPost));
-        if (Summaries == null || !Summaries.Any(bp => bp.Id == blogPost.Id && bp.Author == blogPost.Author))
-        {
-            return;
-        }
-
-        var summary = Summaries.Find(summary => summary.Id == blogPost.Id && summary.Author == blogPost.Author);
-        if (summary is not null)
-        {
-            summary.Title = blogPost.Title;
-            summary.Tags = blogPost.Tags;
-            summary.BlogPostMarkdown =
-            blogPost.BlogPostMarkdown!;
-
-            if (summary.BlogPostMarkdown.Length > 500)
-            {
-                summary.BlogPostMarkdown =
-                summary.BlogPostMarkdown[..500];
-            }
-        }
+        _blogpostService.BlogpostChanged -= OnBlogpostsChanged;
     }
 
-    public void Remove(Guid id, string author)
+    private async void OnBlogpostsChanged(object? sender, EventArgs e)
     {
-        if (Summaries == null || !Summaries.Any(summary => summary.Id == id && summary.Author == author))
-        {
-            return;
-        }
-        var summary =
-        Summaries.First(summary => summary.Id == id && summary.Author == author);
-        Summaries.Remove(summary);
+        await LoadBlogpostSummaries(true);
     }
 }

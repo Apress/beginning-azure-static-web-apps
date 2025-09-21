@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "Client": {
+    "http": {
       "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {
@@ -8,23 +8,18 @@
       },
       "dotnetRunMessages": true,
       "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}",
-      "applicationUrl": "https://localhost:5000;http://localhost:5001"
+      "applicationUrl": "http://localhost:5224"
     },
-    "IIS Express": {
-      "commandName": "IISExpress",
+    "https": {
+      "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
-      "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}"
+      "dotnetRunMessages": true,
+      "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}",
+      "applicationUrl": "https://localhost:7000;http://localhost:7001"
     }
   },
-  "iisSettings": {
-    "windowsAuthentication": false,
-    "anonymousAuthentication": true,
-    "iisExpress": {
-      "applicationUrl": "http://localhost:22072",
-      "sslPort": 44332
-    }
-  }
+  "$schema": "https://json.schemastore.org/launchsettings.json"
 }

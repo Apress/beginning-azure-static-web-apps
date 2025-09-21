@@ -1,24 +1,47 @@
 ﻿@page "/blogposts"
-@inject BlogPostSummaryService service
+@inject BlogpostSummaryService service
+@inject NavigationManager navigationManager
+@implements IDisposable
+@inject BlogpostService blogpostService
+@inject NavigationManager navigationManager
 
-<PageTitle>Blog posts</PageTitle>
-<h1>Blog posts</h1>
+<PageTitle>Blogposts</PageTitle>
+<h1>Blogposts</h1>
 
 <AuthorizeView Roles="admin">
     <Authorized>
-        <a href="blogposts/new/edit">Create</a>
+        <button @onclick="@(() =>
+                navigationManager.NavigateTo("/blogposts/new"))">
+            Create Blogpost
+        </button>
     </Authorized>
 </AuthorizeView>
 
 @if (service.Summaries is null)
 {
-     <div>Loading...</div>
+    <div>Loading...</div>
 }
 else
 {
-    foreach (var blogPostSummary in service.Summaries.OrderByDescending(bps => bps.PublishedDate))
+    foreach (var blogpostSummary in service.Summaries.OrderByDescending(bps => bps.PublishedDate))
     {
-        <BlogPostSummary Summary="@blogPostSummary" />
+        <BlogpostSummary Summary="@blogpostSummary" />
+        var editAddress =$"/blogposts/{@blogpostSummary.Author}/{@blogpostSummary.Id}/edit";
+
+        <AuthorizeView Roles="admin">
+            <Authorized>
+                <button @onclick="@(() =>
+                    navigationManager
+                    .NavigateTo(editAddress))">
+                        Edit BlogPost
+                </button>
+                <button @onclick="(() => blogpostService
+                    .Delete(blogpostSummary.Id, blogpostSummary.
+                    Author))">
+                        Delete Blogpost
+                </button>
+            </Authorized>
+        </AuthorizeView>
     }
 }
 
@@ -26,6 +49,17 @@ else
 {
     protected override async Task OnInitializedAsync()
     {
-        await service.LoadBlogPostSummaries();
+        await service.LoadBlogpostSummaries();
+        service.SummariesRefreshed += OnSummariesRefreshed;
+    }
+
+    public void Dispose()
+    {
+        service.SummariesRefreshed -= OnSummariesRefreshed;
+    }
+
+    private void OnSummariesRefreshed(object? sender, EventArgs e)
+    {
+        StateHasChanged();
     }
 }

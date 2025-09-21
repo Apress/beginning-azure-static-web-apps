@@ -5,97 +5,91 @@ using System.Text;
 using System.Text.Json;
 
 namespace Client.Services;
-public class BlogPostService
+
+public class BlogpostService(HttpClient httpClient,
+NavigationManager navigationManager)
 {
-    private readonly HttpClient http;
-    private readonly NavigationManager navigationManager;
-    private List<BlogPost> blogPostCache = new();
-    private readonly BlogPostSummaryService blogPostSummaryService;
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly NavigationManager _navigationManager = navigationManager;
+    private List<Blogpost> blogpostCache = new();
+    public event EventHandler? BlogpostChanged;
 
-    public BlogPostService(
-        HttpClient http,
-        NavigationManager navigationManager,
-        BlogPostSummaryService blogPostSummaryService)
+    public async Task<Blogpost?> GetBlogpost(Guid blogpostId, string author)
     {
-        ArgumentNullException.ThrowIfNull(http, nameof(http));
-        ArgumentNullException.ThrowIfNull(navigationManager, nameof(navigationManager));
-        ArgumentNullException.ThrowIfNull(blogPostSummaryService, nameof(blogPostSummaryService));
-
-        this.http = http;
-        this.navigationManager = navigationManager;
-        this.blogPostSummaryService = blogPostSummaryService;
-    }
-
-    public async Task<BlogPost?> GetBlogPost(Guid blogPostId, string author)
-    {
-        BlogPost? blogPost = blogPostCache.FirstOrDefault(bp => bp.Id == blogPostId && bp.Author == author);
-        if (blogPost is null)
+        Blogpost? blogpost = blogpostCache.FirstOrDefault(bp => bp.Id == blogpostId && bp.Author == author);
+        if (blogpost is null)
         {
-            var result = await http.GetAsync($"api/blogposts/{author}/{blogPostId}");
+            var result = await _httpClient.GetAsync($"api/blogposts/{author}/{blogpostId}");
             if (!result.IsSuccessStatusCode)
             {
-                navigationManager.NavigateTo("404");
+                _navigationManager.NavigateTo("404");
                 return null;
             }
-            blogPost = await result.Content.ReadFromJsonAsync<BlogPost>();
-            if (blogPost is null)
+           
+            blogpost = await result.Content.ReadFromJsonAsync<Blogpost>();
+
+            if (blogpost is null)
             {
-                navigationManager.NavigateTo("404");
+                _navigationManager.NavigateTo("404");
                 return null;
             }
-            blogPostCache.Add(blogPost);
+            blogpostCache.Add(blogpost);
         }
-        return blogPost;
+        return blogpost;
     }
 
-    public async Task<BlogPost> Create(BlogPost blogPost)
+    public async Task<Blogpost> Create(Blogpost blogpost)
     {
-        ArgumentNullException.ThrowIfNull(blogPost, nameof(blogPost));
+        ArgumentNullException.ThrowIfNull(blogpost, nameof(blogpost));
 
-        var content = JsonSerializer.Serialize(blogPost);
-        var data = new StringContent(content, Encoding.UTF8, "application/json");
-        
-        var result = await http.PostAsync("api/blogposts", data);
+        var result = await _httpClient.PostAsJsonAsync("api/blogposts", blogpost);
         result.EnsureSuccessStatusCode();
-        BlogPost? savedBlogPost = await result.Content.ReadFromJsonAsync<BlogPost>();
         
-        blogPostCache.Add(savedBlogPost!);
-        blogPostSummaryService.Add(savedBlogPost!);
+        var savedBlogpost = await result
+            .Content
+            .ReadFromJsonAsync<Blogpost>();
+        blogpostCache.Add(savedBlogpost!);
         
-        return savedBlogPost!;
+        OnBlogpostsChanged();
+        return savedBlogpost!;
     }
 
-    public async Task Update(BlogPost blogPost)
-    {
-        ArgumentNullException.ThrowIfNull(blogPost, nameof(blogPost));
+    public async Task Update(Blogpost blogpost)
+    { 
+        ArgumentNullException.ThrowIfNull(blogpost, nameof(blogpost));
 
-        var content = JsonSerializer.Serialize(blogPost);
-        var data = new StringContent(content, Encoding.UTF8, "application/json");
+        var results = await _httpClient.PutAsJsonAsync("api/blogposts", blogpost);
+        results.EnsureSuccessStatusCode();
+        var updatedBlogpost = await results
+            .Content
+            .ReadFromJsonAsync<Blogpost>();
+        if (blogpostCache != null)
+        { 
+            var index = blogpostCache.FindIndex(b => b.Id == blogpost.Id && b.Author == blogpost.Author);
+            if (index >= 0)
+            {
+                blogpostCache[index] = updatedBlogpost!;
+            }
 
-        var result = await http.PutAsync("api/blogposts", data);
-        result.EnsureSuccessStatusCode();
-        
-        int index = blogPostCache.FindIndex(bp => bp.Id == blogPost.Id && bp.Author == blogPost.Author);
-        
-        if (index >= 0)
-        {
-            blogPostCache[index] = blogPost;
+            OnBlogpostsChanged();
         }
-        
-        blogPostSummaryService.Replace(blogPost);
     }
 
     public async Task Delete(Guid id, string author)
     {
-        var result = await http.DeleteAsync($"/api/blogposts/{author}/{id}");
+        var deleteURL = $"api/blogposts/{author}/{id}";
+    
+        var result = await _httpClient.DeleteAsync(deleteURL);
         result.EnsureSuccessStatusCode();
+        blogpostCache.RemoveAll(
+            blogpost => blogpost.Id == id
+            && blogpost.Author == author);
         
-        var blogPost = blogPostCache.FirstOrDefault(summary => summary.Id == id && summary.Author == author);
-        if (blogPost is not null)
-        {
-            blogPostCache.Remove(blogPost);
-        }
+        OnBlogpostsChanged();
+    }
 
-        blogPostSummaryService.Remove(id, author);
+    private void OnBlogpostsChanged()
+    {
+        BlogpostChanged?.Invoke(this, EventArgs.Empty);
     }
 }

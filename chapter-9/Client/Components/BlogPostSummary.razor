@@ -1,5 +1,5 @@
-﻿@using Models
-@inject NavigationManager navigationManager
+﻿@inject NavigationManager navigationManager
+
 <article @onclick=@Navigate>
     <h2>@Summary.Title</h2>
     <div>
@@ -9,13 +9,14 @@
         }
     </div>
     <div>
-        @((MarkupString)Markdown.ToHtml(Summary.BlogPostMarkdown))
+        @((MarkupString)Markdown.ToHtml(Summary.BlogpostMarkdown))
     </div>
 </article>
 
-@code{
- [Parameter]
- public BlogPost Summary { get; set; }
+@code {
+    [Parameter]
+    public Blogpost Summary { get; set; }
 
- void Navigate() => navigationManager.NavigateTo($"/blogposts/{Summary.Author}/{Summary.Id}");
+    void Navigate() => navigationManager
+                       .NavigateTo($"/blogposts/{Summary.Author}/{Summary.Id}");
 }

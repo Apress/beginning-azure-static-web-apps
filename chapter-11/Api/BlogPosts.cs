@@ -1,192 +1,262 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
-using System.Collections.Generic;
-using System.Linq;
 using Models;
-using System;
-using Microsoft.Azure.Cosmos;
-using System.Threading.Tasks;
 using StaticWebAppAuthentication.Api;
 using StaticWebAppAuthentication.Models;
+using System.Net;
+using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Azure.Cosmos;
 
 namespace Api;
-public static class BlogPosts
+
+public class Blogposts
 {
-    public static object UriFactory { get; private set; }
-    [FunctionName($"{nameof(BlogPosts)}_Get")]
-    public static IActionResult GetAllBlogPosts(
-    [HttpTrigger(
-        AuthorizationLevel.Anonymous,
-        "get",
-        Route = "blogposts")]
-    HttpRequest req,
-    [CosmosDB(
-        "SwaBlog",
-        "BlogContainer",
-         Connection = "CosmosDbConnectionString",
-         SqlQuery = @"
-             SELECT
-             c.id,
-             c.Title,
-             c.Author,
-             c.PublishedDate,
-             LEFT(c.BlogPostMarkdown, 500)
-             As BlogPostMarkdown,
-             Length(c.BlogPostMarkdown) <= 500
-             As PreviewIsComplete,
-             c.Tags
-             FROM c
-             WHERE c.Status = 2")     ]
-    IEnumerable<BlogPost> blogPosts,
-    ILogger log)
+    private readonly ILogger<Blogposts> _logger;
+
+    public Blogposts(ILogger<Blogposts> logger)
     {
-        return new OkObjectResult(blogPosts);
+        _logger = logger;
     }
 
-    [FunctionName($"{nameof(BlogPosts)}_GetId")]
-    public static IActionResult GetBlogPost(
-        [HttpTrigger(
-            AuthorizationLevel.Anonymous,
+    [Function($"{nameof(Blogposts)}_GetAll")]
+    public IActionResult GetAll(
+        [HttpTrigger(AuthorizationLevel.Function,
             "get",
-            Route = "blogposts/{author}/{id}")]
-        HttpRequest req,
-        [CosmosDB(
-            "SwaBlog",
-            "BlogContainer",
+            Route = "blogposts")]
+            HttpRequest req,
+        [CosmosDBInput(
+            databaseName: "SwaBlog",
+            containerName: "BlogContainer",
             Connection = "CosmosDbConnectionString",
-            SqlQuery = @"SELECT
-                c.id,
-                c.Title,
-                c.Author,
-                c.PublishedDate,
-                c.BlogPostMarkdown,
-                c.Status,
-                c.Tags
-                FROM c
-                WHERE c.id = {id} and c.Author={author}")]
-        IEnumerable<BlogPost> blogposts,
-        ILogger log)
+            SqlQuery =@"
+            SELECT
+            c.id,
+            c.Title,
+            c.Author,
+            c.PublishedDate,
+            LEFT(c.BlogpostMarkdown, 500)
+            As BlogpostMarkdown,
+            LENGTH(c.BlogpostMarkdown) <= 500
+            As PreviewIsComplete,
+            c.Tags
+            FROM c
+            WHERE c.Status = 2")]
+            IEnumerable<Blogpost> blogposts)
     {
-        if (blogposts.ToArray().Length == 0)
+        return new OkObjectResult(blogposts);
+    }
+
+    [Function($"{nameof(Blogposts)}_GetSingle")]
+    public IActionResult GetSingle(
+        [HttpTrigger(
+            AuthorizationLevel.Function,
+            "get",
+            Route = "blogposts/{author}/{id}")
+            ] HttpRequest req,
+        [CosmosDBInput(
+            databaseName: "SwaBlog",
+            containerName: "BlogContainer",
+            Connection = "CosmosDbConnectionString",
+            SqlQuery =@"
+            SELECT
+            c.id,
+            c.Title,
+            c.Author,
+            c.PublishedDate,c.BlogpostMarkdown,
+            c.Tags
+            FROM c
+            WHERE c.Status = 2
+            AND c.id = {id}
+            AND c.Author = {author}")
+            ] IEnumerable<Blogpost> blogposts)
+    {
+        if (!blogposts.Any())
         {
             return new NotFoundResult();
         }
-
         return new OkObjectResult(blogposts.First());
     }
 
-    [FunctionName($"{nameof(BlogPosts)}_Post")]
-    public static IActionResult PostBlogPost(
+    [Function($"{nameof(Blogposts)}_Post")]
+    public static async Task<IActionResult> PostBlogpostAsync(
         [HttpTrigger(
             AuthorizationLevel.Anonymous,
             "post",
-            Route = "blogposts")]
-        BlogPost blogPost,
-        HttpRequest request,
-        [CosmosDB(
-            "SwaBlog",
-            "BlogContainer",
-            Connection = "CosmosDbConnectionString")]
-        out dynamic savedBlogPost,
-        ILogger log)
+            Route = "blogposts")] HttpRequestData req,
+        [CosmosDBInput
+            (Connection = "CosmosDbConnectionString")]
+        CosmosClient client)
     {
-        if (blogPost.Id != default)
+        var blogpost = await req.ReadFromJsonAsync<Blogpost>();
+        if (blogpost is null || string.IsNullOrEmpty(blogpost.Title))
         {
-            savedBlogPost = null;
-            return new BadRequestObjectResult("id must be null");
+            return new BadRequestObjectResult("Blogpost is incomplete");
+        }
+        
+        if (blogpost.Id != default)
+        {
+            return new BadRequestObjectResult("Id must be empty");
+        }
+        (var authorized, var clientPrincipal) = IsAuthorized(req);
+        if (!authorized)
+        {
+            return new UnauthorizedResult();
         }
 
-        var clientPrincipal = StaticWebAppApiAuthorization.ParseHttpHeaderForClientPrincipal(request.Headers);
+        var database = client.GetDatabase("SwaBlog");
+        var id = Guid.CreateVersion7();
+        var author = clientPrincipal!.UserDetails!;
 
-        blogPost.Id = Guid.NewGuid();
-        blogPost.Author = clientPrincipal.UserDetails;
-
-        savedBlogPost = new
-        {
-            id = blogPost.Id.ToString(),
-            Title = blogPost.Title,
-            Author = blogPost.Author,
-            PublishedDate = blogPost.PublishedDate,
-            Tags = blogPost.Tags,
-            BlogPostMarkdown = blogPost.BlogPostMarkdown,
-            Status = 2
-        };
-
-        return new OkObjectResult(blogPost);
+        var savedBlogpost =
+            await SaveBlogpostAsync(blogpost, id, author, database);
+        await SaveTagsAsync(blogpost, database);
+        return new OkObjectResult(savedBlogpost);
     }
 
-    [FunctionName($"{nameof(BlogPosts)}_Put")]
-    public static IActionResult PutBlogPost(
-        [HttpTrigger(
-            AuthorizationLevel.Anonymous,
-            "put",
-            Route = "blogposts")]
-        BlogPost updatedBlogPost,
-        [CosmosDB(
-            "SwaBlog",
-            "BlogContainer",
-            Connection = "CosmosDbConnectionString",
-            Id = "{Id}",
-            PartitionKey = "{Author}")]
-        BlogPost currentBlogPost,
-        [CosmosDB(
-            "SwaBlog",
-            "BlogContainer",
-            Connection = "CosmosDbConnectionString")]
-        out dynamic savedBlogPost,
-        ILogger log)
+    [Function($"{nameof(Blogposts)}_Put")]
+    public async Task<IActionResult> PutBlogpostAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put",
+            Route = "blogposts")] HttpRequestData req,
+        [CosmosDBInput(Connection = "CosmosDbConnectionString")]
+            CosmosClient client)
     {
-        if (currentBlogPost is null)
+        var blogpost = await req.ReadFromJsonAsync<Blogpost>();
+        if (blogpost is null || string.IsNullOrEmpty(blogpost.Title))
         {
-            savedBlogPost = null;
+            return new BadRequestObjectResult("Blogpost is incomplete");
+        }
+
+        (var authorized, var clientPrincipal) = IsAuthorized(req);
+        if (!authorized)
+        {
+            return new UnauthorizedObjectResult("Auth Token is Invalid");
+        }
+
+        var database = client.GetDatabase("SwaBlog");
+        var container = database.GetContainer("BlogContainer");
+        Blogpost? currentBlogpost;
+        try
+        {
+            var blogResponse = await container.ReadItemAsync<Blogpost>(
+                id: blogpost.Id.ToString(),
+                partitionKey: new PartitionKey(blogpost.Author));
+            currentBlogpost = blogResponse.Resource;
+        }
+        catch (CosmosException)
+        {
             return new NotFoundResult();
         }
 
-        savedBlogPost = new
+        if (currentBlogpost is null)
         {
-            id = updatedBlogPost.Id.ToString(),
-            Title = updatedBlogPost.Title,
-            Author = updatedBlogPost.Author,
-            PublishedDate = updatedBlogPost.PublishedDate,
-            Tags = updatedBlogPost.Tags,
-            BlogPostMarkdown = updatedBlogPost.BlogPostMarkdown,
-            Status = 2
-        };
+            return new NotFoundResult();
+        }
 
-        return new NoContentResult();
+        if (currentBlogpost.Author != clientPrincipal!.UserDetails)
+        {
+            return new StatusCodeResult(
+                StatusCodes.Status403Forbidden);
+        }
+
+        var savedBlogpost =
+        await SaveBlogpostAsync(blogpost, blogpost.Id, blogpost.Author, database);
+        await SaveTagsAsync(blogpost, database);
+        return new OkObjectResult(savedBlogpost);
     }
 
-    [FunctionName($"{nameof(BlogPosts)}_Delete")]
-    public static async Task<IActionResult> DeleteBlogPost(
-        [HttpTrigger(
-            AuthorizationLevel.Anonymous,
-            "delete",
-            Route = "blogposts/{author}/{id}")]
-        HttpRequest request,
+    private static async Task<dynamic> SaveBlogpostAsync(
+        Blogpost blogpost,
+        Guid id,
         string author,
-        string id,
-        [CosmosDB(
-            "SwaBlog",
-            "BlogContainer",
-            Connection = "CosmosDbConnectionString",
-            Id = "{id}",
-            PartitionKey = "{author}")]
-        BlogPost currentBlogPost,
-        [CosmosDB(
-            Connection = "CosmosDbConnectionString")]
-        CosmosClient client,
-        ILogger log)
+        Database database)
     {
-        if (currentBlogPost is null)
+        dynamic savedBlogPost = new
+        {
+            id = id.ToString(),
+            Author = author,
+            PublishedDate = DateTime.Now,
+            Status = 2,
+            blogpost.Title,
+            blogpost.Tags,
+            blogpost.BlogpostMarkdown,
+        };
+        var container = database.GetContainer("BlogContainer");
+        await container.UpsertItemAsync(
+        savedBlogPost, new PartitionKey(author));
+        return savedBlogPost;
+}
+
+    private static async Task SaveTagsAsync(Blogpost blogpost, Database database)
+    {
+        var tagsContainer =
+        database.GetContainer("StringContainer");
+        List<Task> tagInserts = [];
+        foreach (string tag in blogpost.Tags)
+        {
+            tagInserts.Add(tagsContainer.UpsertItemAsync(
+            new { PartitionKey = "Tags", id = tag },
+            new PartitionKey("Tags")));
+        }
+        await Task.WhenAll(tagInserts);
+    }
+
+    [Function($"{nameof(Blogposts)}_Delete")]
+    public async Task<IActionResult> DeleteBlogpost(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete",
+            Route = "blogposts/{author}/{id}")] HttpRequestData req,
+            string id,
+            string author,
+        [CosmosDBInput(
+            databaseName: "SwaBlog",
+            containerName: "BlogContainer",
+            Connection = "CosmosDbConnectionString")]
+            Container blogpostContainer)
+    {
+        Blogpost? currentBlogpost = null;
+        try
+        {
+            var blogResponse =  
+                await blogpostContainer.ReadItemAsync<Blogpost>(
+                    id: id,
+                    partitionKey: new PartitionKey(author));
+            currentBlogpost = blogResponse.Resource;
+        }
+        catch (CosmosException ex)
+            when (ex.StatusCode == HttpStatusCode.NotFound)
         {
             return new NoContentResult();
         }
-        Container container = client.GetDatabase("SwaBlog").GetContainer("BlogContainer");
-        await container.DeleteItemAsync<BlogPost>(id, new PartitionKey(author));
 
+        (var authorized, var clientPrincipal) = IsAuthorized(req);
+        if (!authorized)
+        {
+            return new UnauthorizedObjectResult("Auth Token is Invalid");
+        }
+        
+        if (currentBlogpost.Author != clientPrincipal!.UserDetails)
+        {
+            return new StatusCodeResult(
+            StatusCodes.Status403Forbidden);
+        }
+
+        await blogpostContainer.DeleteItemAsync<Blogpost>(
+            id: id,
+            partitionKey: new PartitionKey(author));
+        
         return new NoContentResult();
+    }
+
+    private static (bool Authorized, ClientPrincipal? ClientPrincipal) IsAuthorized(HttpRequestData req)
+    {
+        if (StaticWebAppApiAuthentication
+            .TryParseHttpHeaderForClientPrincipal
+            (req.Headers, out var clientPrincipal)
+            && !string.IsNullOrWhiteSpace(clientPrincipal!.UserDetails))
+        {
+            return (true, clientPrincipal);
+        }
+        return (false, null);
     }
 }

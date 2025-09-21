@@ -2,40 +2,34 @@
 using System.Net.Http.Json;
 using Models;
 namespace Client.Services;
-public class BlogPostService
+public class BlogpostService(HttpClient httpClient,
+NavigationManager navigationManager)
 {
-    private readonly HttpClient http;
-    private readonly NavigationManager navigationManager;
-    private List<BlogPost> blogPostCache = new();
-    public BlogPostService(
-    HttpClient http,
-    NavigationManager navigationManager)
-    {
-        ArgumentNullException.ThrowIfNull(http, nameof(http));
-        ArgumentNullException.ThrowIfNull(navigationManager, nameof(navigationManager));
-        this.http = http;
-        this.navigationManager = navigationManager;
-    }
+    private readonly HttpClient _httpClient = httpClient;
+    private readonly NavigationManager _navigationManager = navigationManager;
+    private List<Blogpost> blogpostCache = new();
 
-    public async Task<BlogPost?> GetBlogPost(Guid blogPostId, string author)
+    public async Task<Blogpost?> GetBlogpost(Guid blogpostId, string author)
     {
-        BlogPost? blogPost = blogPostCache.FirstOrDefault(bp => bp.Id == blogPostId && bp.Author == author);
-        if (blogPost is null)
+        Blogpost? blogpost = blogpostCache.FirstOrDefault(bp => bp.Id == blogpostId && bp.Author == author);
+        if (blogpost is null)
         {
-            var result = await http.GetAsync($"api/blogposts/{author}/{blogPostId}");
+            var result = await _httpClient.GetAsync($"api/blogposts/{author}/{blogpostId}");
             if (!result.IsSuccessStatusCode)
             {
-                navigationManager.NavigateTo("404");
+                _navigationManager.NavigateTo("404");
                 return null;
             }
-            blogPost = await result.Content.ReadFromJsonAsync<BlogPost>();
-            if (blogPost is null)
+           
+            blogpost = await result.Content.ReadFromJsonAsync<Blogpost>();
+
+            if (blogpost is null)
             {
-                navigationManager.NavigateTo("404");
+                _navigationManager.NavigateTo("404");
                 return null;
             }
-            blogPostCache.Add(blogPost);
+            blogpostCache.Add(blogpost);
         }
-        return blogPost;
+        return blogpost;
     }
 }

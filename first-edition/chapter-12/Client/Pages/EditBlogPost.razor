@@ -1,0 +1,92 @@
+﻿@page "/blogposts/{author}/{id}/edit"
+@page "/blogposts/{id}/edit"
+@using Microsoft.AspNetCore.Authorization
+@using Models
+@inject BlogPostService service
+@inject NavigationManager navigationManager
+
+<AuthorizeView Roles="admin">
+    <Authorized>
+        @if (blogPost is null)
+        {
+            <div>Loading...</div>
+        }
+        else
+        {
+            <EditForm Model="blogPost" OnValidSubmit="Save" Context="EditContext">
+                <div>
+                    <label>Title</label>
+                    <div><InputText @bind-Value=blogPost.Title /></div>
+                </div>
+                <div>
+                    <label>Tags</label>
+                    <div><InputText @bind-Value=tags /></div>
+                </div>
+                <div>
+                    <label>Post</label>
+                    <div>
+                        <InputTextArea @bind-Value=blogPost.BlogPostMarkdown style=" width: 100%; height: 60vh; min-height: 100px;" />
+                    </div>
+                </div>
+                <button type="submit">Save</button>
+            </EditForm>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code
+{
+    private BlogPost? blogPost;
+    private string mode = "edit";
+    private string tags = string.Empty;
+
+    [Parameter]
+    public string? Id { get; set; }
+
+    [Parameter]
+    public string? Author { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Id == "new")
+        {
+            mode = "create";
+            blogPost = new();
+            return;
+        }
+
+        ArgumentNullException.ThrowIfNull(Author, nameof(Author));
+        if (!Guid.TryParse(Id, out Guid id))
+        {
+            throw new InvalidCastException();
+        }
+
+        blogPost = await service.GetBlogPost(id, Author);
+        tags = String.Join(", ", blogPost!.Tags!);
+    }
+
+    private string[] CleanTags(string[] tags)
+    {
+        return tags.ToList()
+        .Select(tag => tag.Trim())
+        .Where(tag => !string.IsNullOrWhiteSpace(tag))
+        .ToArray();
+    }
+
+    private async void Save()
+    {
+        blogPost!.Tags = CleanTags(tags.Split(','));
+
+        if (mode == "create")
+        {
+            blogPost.PublishedDate = DateTime.Now;
+            blogPost = await service.Create(blogPost);
+        }
+        else
+        {
+            await service.Update(blogPost);
+        }
+
+        navigationManager.NavigateTo($"blogposts/{blogPost.Author}/{blogPost.Id}");
+    }
+}

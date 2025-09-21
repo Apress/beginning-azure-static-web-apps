@@ -1,24 +1,19 @@
 ﻿@page "/blogposts"
-@inject BlogPostSummaryService service
+@inject BlogpostSummaryService service
+@inject NavigationManager navigationManager
 
-<PageTitle>Blog posts</PageTitle>
-<h1>Blog posts</h1>
-
-<AuthorizeView Roles="admin">
-    <Authorized>
-        <a href="blogposts/new/edit">Create</a>
-    </Authorized>
-</AuthorizeView>
+<PageTitle>Blogposts</PageTitle>
+<h1>Blogposts</h1>
 
 @if (service.Summaries is null)
 {
-     <div>Loading...</div>
+    <div>Loading...</div>
 }
 else
 {
-    foreach (var blogPostSummary in service.Summaries.OrderByDescending(bps => bps.PublishedDate))
+    foreach (var blogpostSummary in service.Summaries.OrderByDescending(bps => bps.PublishedDate))
     {
-        <BlogPostSummary Summary="@blogPostSummary" />
+        <BlogpostSummary Summary="@blogpostSummary" />
     }
 }
 
@@ -26,6 +21,6 @@ else
 {
     protected override async Task OnInitializedAsync()
     {
-        await service.LoadBlogPostSummaries();
+        await service.LoadBlogpostSummaries();
     }
 }

@@ -1,0 +1,8 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet",
+    "CosmosDbConnectionString": "AccountEndpoint=https://beginning-static-web-apps-stacy-cashmore.documents.azure.com:443/;AccountKey=GyBZyunBe1TvgIx4fsWFyHhDh95KMviSw7nuO3nTFY6AOGP2KoW3M5JazTD55Upwq1IxEQVQG8Y2mCoFeQE1VQ==;"
+  }
+}

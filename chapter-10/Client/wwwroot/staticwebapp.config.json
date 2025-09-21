@@ -1,11 +1,4 @@
 {
-  "routes": [
-    {
-      "route": "/api/blogposts",
-      "methods": [ "POST", "PUT", "DELETE" ],
-      "allowedRoles": [ "admin" ]
-    }
-  ],
   "navigationFallback": {
     "rewrite": "index.html",
     "exclude": [

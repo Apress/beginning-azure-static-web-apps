@@ -1,0 +1,121 @@
+﻿@using System.Collections.Generic
+@using System.Linq
+
+<div class="tag-input-container">
+    <div class="selected-tags">
+    @foreach (var tag in SelectedTags)
+    {
+        <div class="tag">
+            <span>@tag</span>
+            <button type="button"
+                class="remove-tag"
+                @onclick="() => RemoveTag(tag)">×
+            </button>
+        </div>
+    }
+    </div>
+
+    <input type="text"
+           class="tag-input"
+           placeholder="@Placeholder"
+           @bind-value="currentInput"
+           @bind-value:event="oninput"
+           @onkeydown="HandleKeyDown"
+           @onfocus="ShowSuggestions"
+           @onblur="HideSuggestions"
+           @onkeydown:preventDefault=preventDefault />
+
+    @if (filteredSuggestions.Any() && showSuggestions)
+    {
+        <div class="tag-suggestions">
+            @foreach (var suggestion in filteredSuggestions)
+            {
+                <div class="suggestion" @onmousedown="() => SelectSuggestion(suggestion)">@suggestion</div>
+            }
+        </div>
+    }
+</div>
+
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public required List<string> SelectedTags { get; set; }
+
+    [Parameter]
+    [EditorRequired]
+    public required List<string> AvailableTags { get; set; }
+
+    [Parameter]
+    [EditorRequired]
+    public required EventCallback<List<string>> SelectedTagsChanged { get; set; }
+
+    [Parameter]
+    public string Placeholder { get; set; } = "Enter tags...";
+
+    private string currentInput = "";
+    private bool showSuggestions = false;
+    private bool preventDefault;
+    private List<string> filteredSuggestions =>
+        AvailableTags
+        .Where(tag => !SelectedTags.Contains(tag) &&
+            tag.ToLower().Contains(currentInput.ToLower()))
+        .ToList();
+
+    private async Task AddTag(string tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag)) { return; }
+
+        tag = tag.Trim();
+
+        if (!SelectedTags.Contains(tag))
+        {
+            SelectedTags.Add(tag);
+            await SelectedTagsChanged.InvokeAsync(SelectedTags);
+            currentInput = "";
+        }
+    }
+
+    private async Task RemoveTag(string tag)
+    {
+        if (SelectedTags.Contains(tag))
+        {
+            SelectedTags.Remove(tag);
+            await SelectedTagsChanged.InvokeAsync(SelectedTags);
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(currentInput))
+        {
+            preventDefault = true;
+            await AddTag(currentInput);
+        }
+        else if (e.Key == "Escape")
+        {
+            HideSuggestions();
+            preventDefault = false;
+        }
+        else
+        {
+            preventDefault = false;
+        }
+    }
+
+    private void ShowSuggestions()
+    {
+        showSuggestions = true;
+    }
+
+    private void HideSuggestions()
+    {
+        showSuggestions = false;
+    }
+
+    private async Task SelectSuggestion(string suggestion)
+    {
+        await AddTag(suggestion);
+        HideSuggestions();
+    }
+}

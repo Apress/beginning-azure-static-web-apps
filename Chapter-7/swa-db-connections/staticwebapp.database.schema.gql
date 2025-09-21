@@ -1,0 +1,17 @@
+
+"""
+Add your CosmosDB NoSQL database schema in this file
+
+For example:
+
+type Book @model {
+  id: ID
+  title: String
+}
+
+"""
+
+type StringItem @model {
+  id: String
+  PartitionKey: String
+}

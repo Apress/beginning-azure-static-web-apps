@@ -1,0 +1,11 @@
+### Query string items filtered by Tags and Angular
+POST http://localhost:4280/data-api/graphql
+Content-Type: application/json
+
+{"query": "query GetAll { stringItems(filter: {PartitionKey: {eq: \"Tags\"}}) { items { id PartitionKey } } }"}
+
+### Query string items filtered by Tags and Angular
+POST https://delightful-hill-09bd4c003.1.azurestaticapps.net/data-api/graphql
+Content-Type: application/json
+
+{ "query": "query GetAll { stringItems(filter: {PartitionKey: {eq: \"Tags\"}}) { items { id PartitionKey } } }"}

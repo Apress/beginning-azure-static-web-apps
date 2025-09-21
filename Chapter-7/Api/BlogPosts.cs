@@ -1,74 +1,76 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
-using System.Collections.Generic;
-using System.Linq;
 using Models;
+
 namespace Api;
-public static class BlogPosts
+
+public class Blogposts
 {
-    public static object UriFactory { get; private set; }
-    [FunctionName($"{nameof(BlogPosts)}_Get")]
-    public static IActionResult GetAllBlogPosts(
-    [HttpTrigger(
-        AuthorizationLevel.Anonymous,
-        "get",
-        Route = "blogposts")]
-    HttpRequest req,
-    [CosmosDB(
-        "SwaBlog",
-        "BlogContainer",
-         Connection = "CosmosDbConnectionString",
-         SqlQuery = @"
-             SELECT
-             c.id,
-             c.Title,
-             c.Author,
-             c.PublishedDate,
-             LEFT(c.BlogPostMarkdown, 500)
-             As BlogPostMarkdown,
-             Length(c.BlogPostMarkdown) <= 500
-             As PreviewIsComplete,
-             c.Tags
-             FROM c
-             WHERE c.Status = 2")     ]
-    IEnumerable<BlogPost> blogPosts,
-    ILogger log)
+    private readonly ILogger<Blogposts> _logger;
+
+    public Blogposts(ILogger<Blogposts> logger)
     {
-        return new OkObjectResult(blogPosts);
+        _logger = logger;
     }
 
-    [FunctionName($"{nameof(BlogPosts)}_GetId")]
-    public static IActionResult GetBlogPost(
-        [HttpTrigger(
-            AuthorizationLevel.Anonymous, 
+    [Function($"{nameof(Blogposts)}_GetAll")]
+    public IActionResult GetAll(
+        [HttpTrigger(AuthorizationLevel.Function,
             "get",
-            Route = "blogposts/{author}/{id}")]
-        HttpRequest req,
-        [CosmosDB(
-            "SwaBlog", 
-            "BlogContainer",
+            Route = "blogposts")]
+            HttpRequest req,
+        [CosmosDBInput(
+            databaseName: "SwaBlog",
+            containerName: "BlogContainer",
             Connection = "CosmosDbConnectionString",
-            SqlQuery = @"SELECT
-                c.id,
-                c.Title,
-                c.Author,
-                c.PublishedDate,
-                c.BlogPostMarkdown,
-                c.Status,
-                c.Tags
-                FROM c
-                WHERE c.id = {id} and c.Author={author}")]
-        IEnumerable<BlogPost> blogposts,
-        ILogger log)
+            SqlQuery =@"
+            SELECT
+            c.id,
+            c.Title,
+            c.Author,
+            c.PublishedDate,
+            LEFT(c.BlogpostMarkdown, 500)
+            As BlogpostMarkdown,
+            LENGTH(c.BlogpostMarkdown) <= 500
+            As PreviewIsComplete,
+            c.Tags
+            FROM c
+            WHERE c.Status = 2")]
+            IEnumerable<Blogpost> blogposts)
     {
-        if (blogposts.ToArray().Length == 0)
+        return new OkObjectResult(blogposts);
+    }
+
+    [Function($"{nameof(Blogposts)}_GetSingle")]
+    public IActionResult GetSingle(
+        [HttpTrigger(
+            AuthorizationLevel.Function,
+            "get",
+            Route = "blogposts/{author}/{id}")
+            ] HttpRequest req,
+        [CosmosDBInput(
+            databaseName: "SwaBlog",
+            containerName: "BlogContainer",
+            Connection = "CosmosDbConnectionString",
+            SqlQuery =@"
+            SELECT
+            c.id,
+            c.Title,
+            c.Author,
+            c.PublishedDate,c.BlogpostMarkdown,
+            c.Tags
+            FROM c
+            WHERE c.Status = 2
+            AND c.id = {id}
+            AND c.Author = {author}")
+            ] IEnumerable<Blogpost> blogposts)
+    {
+        if (!blogposts.Any())
         {
             return new NotFoundResult();
         }
-
         return new OkObjectResult(blogposts.First());
     }
 }

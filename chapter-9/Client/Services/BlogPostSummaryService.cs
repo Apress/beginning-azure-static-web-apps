@@ -2,22 +2,18 @@
 using System.Net.Http.Json;
 
 namespace Client.Services;
-public class BlogPostSummaryService
+
+public class BlogpostSummaryService(HttpClient httpClient)
 {
-    private readonly HttpClient http;
-    public List<BlogPost>? Summaries;
+    private readonly HttpClient _httpClient = httpClient;
+    public List<Blogpost>? Summaries;
 
-    public BlogPostSummaryService(HttpClient http)
-    {
-        ArgumentNullException.ThrowIfNull(http, nameof(http));
-        this.http = http;
-    }
 
-    public async Task LoadBlogPostSummaries()
+    public async Task LoadBlogpostSummaries()
     {
         if (Summaries == null)
         {
-            Summaries = await http.GetFromJsonAsync<List<BlogPost>>("api/blogposts");
+            Summaries = await _httpClient.GetFromJsonAsync<List<Blogpost>> ("api/blogposts");
         }
     }
 }

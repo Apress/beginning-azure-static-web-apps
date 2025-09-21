@@ -3,54 +3,91 @@ using StaticWebAppAuthentication.Models;
 using System.Net.Http.Json;
 using System.Security.Claims;
 namespace StaticWebAppAuthentication.Client;
-public class StaticWebAppsAuthenticationStateProvider : AuthenticationStateProvider
-{
-    private readonly HttpClient http;
-    public StaticWebAppsAuthenticationStateProvider(HttpClient httpClient)
-    {
-        ArgumentNullException.ThrowIfNull(httpClient, nameof(httpClient));
-        this.http = httpClient;
-    }
 
-    public override async Task<AuthenticationState> GetAuthenticationStateAsync()
+public class StaticWebAppsAuthenticationStateProvider   
+        (HttpClient httpClient) : AuthenticationStateProvider
+{
+    private readonly HttpClient httpClient =
+        httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+    private record TryGetAsyncResult<T>(bool Success, T? Value);
+    private const string AuthMeEndpoint = "/.auth/me";
+    private const string AnonymousRole = "anonymous";
+
+    public override async Task<AuthenticationState>
+GetAuthenticationStateAsync()
     {
+        var userNotAuthenticatedAuthState =
+        new AuthenticationState(new ClaimsPrincipal());
         try
         {
-            var clientPrincipal = await GetClientPrincipal();
-            var claimsPrincipal = GetClaimsFromClientClaimsPrincipal(clientPrincipal);
-            return new AuthenticationState(claimsPrincipal);
+            var getClientPrincipalResponse = await TryGetClientPrincipalAsync();
+            if (getClientPrincipalResponse is null)
+            {
+                return userNotAuthenticatedAuthState;
+            }
+            var hasClaimsPrincipal = TryGetClaimsFromClientClaimsPrincipal(
+                getClientPrincipalResponse.Value!,
+                out var claimsPrincipal);
+            if (hasClaimsPrincipal)
+            {
+                return new AuthenticationState(claimsPrincipal!);
+            }
+            return userNotAuthenticatedAuthState;
         }
         catch
         {
-            return new AuthenticationState(new ClaimsPrincipal());
+            return userNotAuthenticatedAuthState;
         }
     }
 
-    public static ClaimsPrincipal GetClaimsFromClientClaimsPrincipal(ClientPrincipal principal)
+    private static bool TryGetClaimsFromClientClaimsPrincipal(
+        ClientPrincipal principal,
+        out ClaimsPrincipal? claimsPrincipal) 
     {
-        principal.UserRoles =
-        principal.UserRoles?.Except(new[] { "anonymous" }, StringComparer.CurrentCultureIgnoreCase) ?? new List<string>();
-        if (!principal.UserRoles.Any())
+        claimsPrincipal = null;
+
+        var editedRoles = principal.UserRoles?.Except([AnonymousRole], StringComparer.CurrentCultureIgnoreCase) ?? [];
+
+        if (!editedRoles.Any())
         {
-            return new ClaimsPrincipal();
+            return false;
         }
+
         ClaimsIdentity identity = AdaptToClaimsIdentity(principal);
-        return new ClaimsPrincipal(identity);
+        claimsPrincipal = new ClaimsPrincipal(identity);
+        return true;
     }
 
     private static ClaimsIdentity AdaptToClaimsIdentity(ClientPrincipal principal)
     {
-        var identity = new ClaimsIdentity(principal.IdentityProvider);
-        identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, principal.UserId!));
-        identity.AddClaim(new Claim(ClaimTypes.Name, principal.UserDetails!));
-        identity.AddClaims(principal.UserRoles!.Select(r => new Claim(ClaimTypes.Role, r)));
+        var identity =
+        new ClaimsIdentity(principal.IdentityProvider);
+        identity.AddClaim(new Claim(
+            ClaimTypes.NameIdentifier,
+            principal.UserId!));
+        identity.AddClaim(
+            new Claim(
+            ClaimTypes.Name,
+            principal.UserDetails!));
+        identity.AddClaims(
+            principal.UserRoles!
+            .Select(r => new Claim(ClaimTypes.Role, r)));
         return identity;
     }
 
-    private async Task<ClientPrincipal> GetClientPrincipal()
+    private async Task<TryGetAsyncResult<ClientPrincipal>>TryGetClientPrincipalAsync()
     {
-        var data = await http.GetFromJsonAsync<AuthenticationData>("/.auth/me");
-        var clientPrincipal = data?.ClientPrincipal ?? new ClientPrincipal();
-        return clientPrincipal;
-    }
+        var authData = await httpClient.
+        GetFromJsonAsync<AuthenticationData>(AuthMeEndpoint);
+        if (authData is null)
+        {
+            return new(false, null);
+        }
+        var clientPrincipal = authData.ClientPrincipal;
+        if (clientPrincipal is null)
+        {
+            return new(false, null);
+        }
+        return new(true, clientPrincipal);
+    }   
 }

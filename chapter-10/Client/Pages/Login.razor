@@ -3,22 +3,21 @@
 @{
     var providers = new Dictionary<string, string>
     {
-        { "aad", "Microsoft" },
-        { "github", "GitHub" },
-        { "twitter", "Twitter" },
-        { "google", "Google"}
+    { "aad", "Microsoft" },
+    { "github", "GitHub" }
     };
 }
 
 <h1>Login</h1>
-
 <div>
-    @foreach (var provider in providers)
-    {
-        <div>
-            <a class="btn btn-block btn-lg btn-social btn-@provider.Key" href="/.auth/login/@provider.Key">
-                <span class="fab fa-@provider.Key"></span> Sign in with @provider.Value
-            </a>
-        </div>
-    }
+
+@foreach(var provider in providers)
+{
+    <div>
+        <a class="btn btn-block btn-lg btn-social btn-@provider.Key" href="/.auth/login/@provider.Key">
+        <span class="fab fa-@provider.Key"> </span>
+        Sign in with @provider.Value
+    </a>
+</div>
+}
 </div>
